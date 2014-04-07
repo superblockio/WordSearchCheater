@@ -66,17 +66,52 @@ using namespace cv;
 
 #pragma mark - CvVideoCameraDelegate methods
 - (void) processImage:(Mat&)image {
+    // Initial cleanup of image
     Mat grayImage;
     cvtColor(image, grayImage, CV_BGRA2GRAY);
     GaussianBlur(grayImage, grayImage, cv::Size(3,3), 2);
     adaptiveThreshold(grayImage, grayImage, 255, ADAPTIVE_THRESH_MEAN_C, THRESH_BINARY, 9, 15);
-    int dilation_size = 1;
-    Mat element = getStructuringElement(MORPH_RECT,
-                                        cv::Size(2*dilation_size + 1, 2*dilation_size+1),
-                                        cv::Point(dilation_size, dilation_size));
+    
+    // Find a set of points representing possible letters
+    vector<vector<cv::Point>> contours;
+    vector<Vec4i> hierarchy;
+    findContours(grayImage, contours, hierarchy, CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE);
+    vector<vector<cv::Point>> contours_poly( contours.size() );
+    vector<cv::Rect> boundRect( contours.size() );
+    for (int i = 0; i < contours.size(); i++) {
+        approxPolyDP(Mat(contours[i]), contours_poly[i], 15, true);
+        boundRect[i] = boundingRect(Mat(contours_poly[i]));
+        //rectangle(image, boundRect[i].tl(), boundRect[i].br(), Scalar(0, 255, 0));
+    }
+    
+    Mat features(boundRect.size(), 2, CV_32F);
+    features = -100000;
+    for (int i = 0; i < boundRect.size(); i++) {
+        // Only count points that are within a certain size range
+        if (boundRect[i].area() < 10000.0f && boundRect[i].area() > 50.0f) {
+            features.at<float>(i, 0) = boundRect[i].tl().x;
+            features.at<float>(i, 0) = boundRect[i].tl().y;
+            // draw rectangles
+            //rectangle(image, boundRect[i].tl(), boundRect[i].br(), Scalar(0, 255, 0));
+        }
+    }
+    
+    // Using a graph representation, add an edge between all points that are within a certain radius
+    // of each other, from the center of the image out, to find all points in the "connected" region
+    // that we believe compose the wordsearch grid.
+    if (features.size[0] > 0) {
+        flann::Index index = flann::Index(features, flann::KDTreeIndexParams());
+        vector<int> neighbors(4);
+        vector<float> dists(4);
+        index.radiusSearch(vector<float>(720/2, 1280/2), neighbors, dists, 100.0f, 4);
+        for (int i =0; i < boundRect.size(); i++) {
+
+        }
+    }
+    
     
     // Comment out to display normal image to user
-    cvtColor(grayImage, image, CV_GRAY2BGRA);
+    //cvtColor(grayImage, image, CV_GRAY2BGRA);
 }
 
 - (BOOL) prefersStatusBarHidden {
